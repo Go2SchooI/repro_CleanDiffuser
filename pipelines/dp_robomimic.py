@@ -271,7 +271,7 @@ def pipeline(args):
 
         # resume training
         if args.resume:
-            lastest_ckpt_path = pathlib.Path(args.resume_path).joinpath('models', 'model_final.pt');
+            lastest_ckpt_path = pathlib.Path(args.resume_path).joinpath('models', args.resume_tag);
             # assert lastest_ckpt_path.is_file(), f"Checkpoint path {lastest_ckpt_path} is not a file"
             if lastest_ckpt_path.is_file():
                 print(f"from checkpoint {lastest_ckpt_path}")
