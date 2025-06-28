@@ -1,0 +1,29 @@
+{
+    "os": "Linux-5.15.0-94-generic-x86_64-with-glibc2.35",
+    "python": "3.9.0",
+    "heartbeatAt": "2025-06-23T18:13:57.742140",
+    "startedAt": "2025-06-23T18:13:56.938057",
+    "docker": null,
+    "gpu": "NVIDIA GeForce RTX 4090 D",
+    "gpu_count": 1,
+    "cpu_count": 192,
+    "cuda": null,
+    "args": [
+        "--config-path=../configs/dp/robomimic/chi_transformer",
+        "--config-name=lift_place",
+        "seed=42",
+        "device=cuda:0"
+    ],
+    "state": "running",
+    "program": "/root/autodl-tmp/CleanDiffuser/pipelines/dp_robomimic.py",
+    "codePath": "pipelines/dp_robomimic.py",
+    "git": {
+        "remote": "https://ghfast.top/https://github.com/CleanDiffuserTeam/CleanDiffuser",
+        "commit": "05f17fc9dbeae7c19a5e264632c9ae9aaac5994e"
+    },
+    "email": null,
+    "root": "/root/autodl-tmp/CleanDiffuser",
+    "host": "autodl-container-667e4fa779-4c9918af",
+    "username": "root",
+    "executable": "/root/miniconda3/envs/cleandiffuser/bin/python"
+}

@@ -1,0 +1,3 @@
+{"step": 0, "total_time": 0.9517214298248291, "avg_diffusion_loss": 1.125312328338623}
+{"step": 0, "mean_step": 400.0, "mean_reward": 0.0, "mean_success": 0.0}
+{"step": 2000, "total_time": 373.2001242637634, "avg_diffusion_loss": 0.12680729115381836}
