@@ -1,9 +1,11 @@
 import hydra
 import os
 import sys
+import logging
+logging.getLogger("robosuite").handlers.clear()
+logging.getLogger("robosuite").propagate = False
 import warnings
 warnings.filterwarnings('ignore')
-
 import gym
 import pathlib
 import time
@@ -207,10 +209,11 @@ def pipeline(args):
     dataloader = torch.utils.data.DataLoader(
         dataset,
         batch_size=args.batch_size,
-        num_workers=8,
+        num_workers=args.num_workers,
         shuffle=True,
         pin_memory=True,
-        persistent_workers=True
+        persistent_workers=True,
+        prefetch_factor=4
     )
     
     # --------------- Create Diffusion Model -----------------

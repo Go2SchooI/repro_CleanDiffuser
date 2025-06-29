@@ -3,6 +3,8 @@ import os
 import sys
 import warnings
 warnings.filterwarnings('ignore')
+import logging
+logging.getLogger("robosuite").setLevel(logging.ERROR)
 ROOT_DIR = os.path.dirname(os.path.dirname(__file__))
 sys.path.append(ROOT_DIR)
 os.chdir(ROOT_DIR)
@@ -311,7 +313,7 @@ def pipeline(args):
             if n_gradient_step % args.save_freq == 0:
                 logger.save_agent(agent=agent, identifier=n_gradient_step)
                 
-            if n_gradient_step % args.eval_freq == 0: # and n_gradient_step > 0:
+            if n_gradient_step % args.eval_freq == 0 and (n_gradient_step > 0 or args.resume):
                 print("Evaluate model...")
                 agent.model.eval()
                 agent.model_ema.eval()

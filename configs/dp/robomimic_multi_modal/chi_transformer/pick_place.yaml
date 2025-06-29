@@ -1,23 +1,63 @@
-pipeline_name: dp_robomimic
+pipeline_name: dp_robomimic_multi_modal
 # env
-env_name: lift_place
+env_name: pick_place
 env_type: ph
 abs_action: false
-dataset_name: m84_low_dim
+dataset_name: m115_image
 dataset_path: dev/robomimic/datasets/${env_name}/${dataset_name}.hdf5
 mode: train
 max_episode_steps: 500
-obs_keys: ['object', 'robot0_eef_pos', 'robot0_eef_quat', 'robot0_gripper_qpos', 'robot0_joint_pos']
-obs_dim: 30
+
+render_obs_key: 'agentview_image'
+shape_meta:
+  action:
+    shape:
+    - 7
+  obs:
+    agentview_image:
+      shape:
+      - 3
+      - 84
+      - 84
+      type: rgb
+    robot0_eef_pos:
+      shape:
+      - 3
+      type: low_dim
+    robot0_eef_quat:
+      shape:
+      - 4
+      type: low_dim
+    robot0_eye_in_hand_image:
+      shape:
+      - 3
+      - 84
+      - 84
+      type: rgb
+    robot0_gripper_qpos:
+      shape:
+      - 2
+      type: low_dim
 action_dim: 7
 obs_steps: 2
 action_steps: 8
+
+# obs_encoder
+rgb_model: resnet18
+resize_shape: null
+crop_shape:
+  - 76
+  - 76
+random_crop: true
+use_group_norm: true
+use_seq: true
+
 # train
 device: cuda:0
 seed: 0
 num_workers: 12
 gradient_steps: 300000
-batch_size: 256
+batch_size: 128
 horizon: 10
 nn: chi_transformer
 diffusion: ddpm
@@ -30,7 +70,7 @@ model_path: path/to/model
 num_envs: 10
 eval_episodes: 60
 save_video: true
-eval_freq: 25000
+eval_freq: 30000
 # log
 exp_name: ${now:%Y.%m.%d-%H.%M}_${dataset_name}_${env_name}_${nn}_${diffusion}
 save_path: logs # logs # train_tests
@@ -38,7 +78,7 @@ project: CleanDiffuser
 group: dp_robomimic
 wandb_mode: offline
 log_freq: 2000
-save_freq: 25000
+save_freq: 30000
 work_dir: ${save_path}/${pipeline_name}/${mode}/${env_name}/${exp_name}_${now:%Y%m%d_%H%M%S}/${seed}
 # resume
 resume: false # True
