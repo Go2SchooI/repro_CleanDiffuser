@@ -191,7 +191,7 @@ def pipeline(args):
     logger = Logger(pathlib.Path(args.work_dir), args)
 
     # ---------------- Create Environment ----------------
-    envs = gym.vector.SyncVectorEnv(
+    envs = gym.vector.SyncVectorEnv.gym.vector.SyncVectorEnv(
         [make_env(args, idx) for idx in range(args.num_envs)],
     )
         

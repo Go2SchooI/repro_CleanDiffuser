@@ -7,6 +7,7 @@ logging.getLogger("robosuite").propagate = False
 import warnings
 warnings.filterwarnings('ignore')
 import gym
+import dill
 import pathlib
 import time
 import collections
@@ -42,7 +43,7 @@ def make_async_envs(args):
             env_meta=env_meta,
             render=False, 
             render_offscreen=enable_render,
-            use_image_obs=enable_render, 
+            use_image_obs=True, 
         )
         return env
     
@@ -57,7 +58,8 @@ def make_async_envs(args):
     def env_fn():
         env = create_robomimic_env(
             env_meta=env_meta, 
-            shape_meta=args.shape_meta
+            shape_meta=args.shape_meta,
+            enable_render=False
         )
         # Robosuite's hard reset causes excessive memory consumption.
         # Disabled to run more envs.
@@ -124,8 +126,7 @@ def make_async_envs(args):
     
     env_fns = [env_fn] * args.num_envs
     # env_fn() and dummy_env_fn() should be function!
-    envs = gym.vector.SyncVectorEnv(env_fns)
-    # envs = AsyncVectorEnv(env_fns, dummy_env_fn=dummy_env_fn)
+    envs = AsyncVectorEnv(env_fns, dummy_env_fn=dummy_env_fn)
     envs.seed(args.seed)
     return envs 
 
@@ -151,9 +152,32 @@ def inference(args, envs, dataset, agent, logger, n_gradient_step = ""):
         obs, t = envs.reset(), 0
 
         # initialize video stream
+        # if args.save_video:
+        #     logger.video_init_async(envs.self.single_env , enable=True, mode=args.mode, video_id=str(i),
+        #         generate_id=(str(n_gradient_step) if args.mode=="train" else ""))
         if args.save_video:
-            logger.video_init_async(envs.envs[0], enable=True, mode=args.mode, video_id=str(i),
-                generate_id=(str(n_gradient_step) if args.mode=="train" else ""))
+        # 定义注入函数：在每个 VideoRecordingWrapper 里设置 file_path 并 start
+            def _init_video(env, video_dir, vid, gid):
+                # env.env 一定是 VideoRecordingWrapper
+                vr = env.env.video_recoder
+                vr.stop()
+                # 构造文件名
+                fname = os.path.join(video_dir, f"{vid}_{gid}.mp4")
+                # 确保目录存在
+                os.makedirs(os.path.dirname(fname), exist_ok=True)
+                env.env.file_path = fname
+                # 显式 start，让 wrapper 在后续 step() 里抓帧
+                vr.start()
+
+            # 序列化函数，并为每个子环境准备相同 args
+            dill_fn = dill.dumps(_init_video)
+            args_list = [
+                (dill_fn, logger._video_dir, str(i),
+                (str(n_gradient_step) if args.mode=="train" else ""))
+                for _ in range(args.num_envs)
+            ]
+            # 在所有子进程里执行这段逻辑
+            envs.call_each('run_dill_function', args_list=args_list)
 
         while t < args.max_episode_steps:
             obs_dict = {}
