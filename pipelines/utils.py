@@ -11,7 +11,7 @@ import torch
 from omegaconf import OmegaConf
 
 from cleandiffuser.env.wrapper import VideoRecordingWrapper
-
+from cleandiffuser.env.async_vector_env import AsyncVectorEnv
 
 def parse_cfg(cfg_path: str) -> OmegaConf:
     """Parses a config file and returns an OmegaConf object."""
@@ -58,10 +58,10 @@ class Logger:
         self._video_dir = make_dir(self._log_dir / 'videos')
         self._cfg = cfg
 
-        swanlab.sync_wandb(
-            mode="cloud",
-            wandb_run=False
-        )
+        # swanlab.sync_wandb(
+        #     mode="cloud",
+        #     wandb_run=False
+        # )
         wandb.init(
             config=OmegaConf.to_container(cfg),
             project=cfg.project,
@@ -79,6 +79,32 @@ class Logger:
             video_env = env.env
         else:
             video_env = env
+        if enable:
+            video_env.video_recoder.stop()
+            if mode == "train":
+                video_filename = os.path.join(self._video_dir, f"{video_id}_{generate_id}.mp4")
+            elif mode == "inference":
+                video_filename = os.path.join(self._video_dir, f"{video_id}_{wv.util.generate_id()}.mp4")
+            video_env.file_path = str(video_filename)
+        else:
+            video_env.file_path = None
+
+    def video_init_async(self, env, enable=False, mode="train", video_id="", generate_id=""):
+        # —— 新增：处理向量环境 —— #
+        if isinstance(env, AsyncVectorEnv):
+            # 获取子环境列表，不同版本可能用 .envs 或 ._envs
+            sub_envs = getattr(env, "envs", None) or getattr(env, "_envs", None) or []
+            for sub in sub_envs:
+                # 递归调用，对每个子环境执行相同逻辑
+                self.video_init_async(sub, enable=enable, mode=mode,
+                                 video_id=video_id, generate_id=generate_id)
+            return
+
+        if isinstance(env.env, VideoRecordingWrapper):
+            video_env = env.env
+        else:
+            video_env = env
+
         if enable:
             video_env.video_recoder.stop()
             if mode == "train":

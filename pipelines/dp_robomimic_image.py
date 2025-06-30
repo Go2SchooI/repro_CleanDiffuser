@@ -124,12 +124,13 @@ def make_async_envs(args):
     
     env_fns = [env_fn] * args.num_envs
     # env_fn() and dummy_env_fn() should be function!
-    envs = AsyncVectorEnv(env_fns, dummy_env_fn=dummy_env_fn)
+    envs = gym.vector.SyncVectorEnv(env_fns)
+    # envs = AsyncVectorEnv(env_fns, dummy_env_fn=dummy_env_fn)
     envs.seed(args.seed)
     return envs 
 
 
-def inference(args, envs, dataset, agent, logger):
+def inference(args, envs, dataset, agent, logger, n_gradient_step = ""):
     """Evaluate a trained agent and optionally save a video."""
     # ---------------- Start Rollout ----------------
     episode_rewards = []
@@ -150,8 +151,9 @@ def inference(args, envs, dataset, agent, logger):
         obs, t = envs.reset(), 0
 
         # initialize video stream
-        # if args.save_video:
-        #     logger.video_init(envs.envs[0], enable=True, video_id=str(i))  # save videos
+        if args.save_video:
+            logger.video_init_async(envs.envs[0], enable=True, mode=args.mode, video_id=str(i),
+                generate_id=(str(n_gradient_step) if args.mode=="train" else ""))
 
         while t < args.max_episode_steps:
             obs_dict = {}
@@ -191,7 +193,7 @@ def inference(args, envs, dataset, agent, logger):
     return {'mean_step': np.nanmean(episode_steps), 'mean_reward': np.nanmean(episode_rewards), 'mean_success': np.nanmean(episode_success)}
 
 
-@hydra.main(config_path="../configs/dp/robomimic_multi_modal/chi_unet", config_name="lift_abs")
+@hydra.main(config_path="../configs/dp/robomimic_multi_modal/chi_transformer", config_name="pick_place")
 def pipeline(args):
     # ---------------- Create Logger ----------------
     set_seed(args.seed)
@@ -281,6 +283,18 @@ def pipeline(args):
         # ----------------- Training ----------------------
         n_gradient_step = 0
         diffusion_loss_list = []
+        
+        # resume training
+        if args.resume:
+            lastest_ckpt_path = pathlib.Path(args.resume_path).joinpath('models', args.resume_tag);
+            # assert lastest_ckpt_path.is_file(), f"Checkpoint path {lastest_ckpt_path} is not a file"
+            if lastest_ckpt_path.is_file():
+                print(f"from checkpoint {lastest_ckpt_path}")
+                agent.load(lastest_ckpt_path)
+            else:
+                print(
+                    f"Checkpoint {lastest_ckpt_path} not found, start from scratch")
+
         start_time = time.time()
         for batch in loop_dataloader(dataloader):
             # get condition
@@ -307,12 +321,12 @@ def pipeline(args):
             if n_gradient_step % args.save_freq == 0:
                 logger.save_agent(agent=agent, identifier=n_gradient_step)
                 
-            if n_gradient_step % args.eval_freq == 0:
+            if n_gradient_step % args.eval_freq == 0 and (n_gradient_step > 0 or args.resume):
                 print("Evaluate model...")
                 agent.model.eval()
                 agent.model_ema.eval()
                 metrics = {'step': n_gradient_step}
-                metrics.update(inference(args, envs, dataset, agent, logger))
+                metrics.update(inference(args, envs, dataset, agent, logger, n_gradient_step))
                 logger.log(metrics, category='inference')
                 agent.model.train()
                 agent.model_ema.train()

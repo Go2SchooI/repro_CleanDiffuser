@@ -81,7 +81,7 @@ log_freq: 2000
 save_freq: 30000
 work_dir: ${save_path}/${pipeline_name}/${mode}/${env_name}/${exp_name}_${now:%Y%m%d_%H%M%S}/${seed}
 # resume
-resume: false # True
+resume: false # true
 resume_path: logs/dp_robomimic/train/lift_place/2025.06.25-19.46_m84_low_dim_lift_place_chi_transformer_ddpm_20250625_194640/42
 resume_tag: model_final
 # hydra

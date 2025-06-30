@@ -109,7 +109,7 @@ def make_env(args, idx):
     return thunk
 
 
-def inference(args, envs, dataset, agent, logger, n_gradient_step):
+def inference(args, envs, dataset, agent, logger, n_gradient_step = ""):
     """Evaluate a trained agent and optionally save a video."""
     # ---------------- Start Rollout ----------------
     episode_rewards = []
@@ -313,7 +313,7 @@ def pipeline(args):
             if n_gradient_step % args.save_freq == 0:
                 logger.save_agent(agent=agent, identifier=n_gradient_step)
                 
-            if n_gradient_step % args.eval_freq == 0 and (n_gradient_step > 0 or args.resume):
+            if n_gradient_step % args.eval_freq == 0: # and (n_gradient_step > 0 or args.resume):
                 print("Evaluate model...")
                 agent.model.eval()
                 agent.model_ema.eval()
@@ -338,7 +338,7 @@ def pipeline(args):
         agent.model_ema.eval()
 
         metrics = {'step': 0}
-        metrics.update(inference(args, envs, dataset, agent, logger, n_gradient_step))
+        metrics.update(inference(args, envs, dataset, agent, logger))
         logger.log(metrics, category='inference')
         
     else:
