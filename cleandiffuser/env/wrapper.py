@@ -255,3 +255,10 @@ class VideoRecordingWrapper(gym.Wrapper):
         if self.video_recoder.is_ready():
             self.video_recoder.stop()
         return self.file_path
+
+    def set_video_path(self, file_path):
+        """设置视频文件路径"""
+        self.file_path = file_path
+        if file_path:
+            self.video_recoder.stop()  # 停止当前录制
+        return True

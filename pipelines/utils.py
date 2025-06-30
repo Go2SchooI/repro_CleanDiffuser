@@ -88,18 +88,23 @@ class Logger:
             video_env.file_path = str(video_filename)
         else:
             video_env.file_path = None
-
+    
     def video_init_async(self, env, enable=False, mode="train", video_id="", generate_id=""):
-        # —— 新增：处理向量环境 —— #
         if isinstance(env, AsyncVectorEnv):
-            # 获取子环境列表，不同版本可能用 .envs 或 ._envs
-            sub_envs = getattr(env, "envs", None) or getattr(env, "_envs", None) or []
-            for sub in sub_envs:
-                # 递归调用，对每个子环境执行相同逻辑
-                self.video_init_async(sub, enable=enable, mode=mode,
-                                 video_id=video_id, generate_id=generate_id)
+            if enable:
+                if mode == "train":
+                    video_filename = os.path.join(self._video_dir, f"{video_id}_{generate_id}.mp4")
+                elif mode == "inference":
+                    video_filename = os.path.join(self._video_dir, f"{video_id}_{wv.util.generate_id()}.mp4")
+                
+                # 关键：调用每个子环境的 set_video_path 方法
+                # 这里 'set_video_path' 是方法名字符串，可以被序列化
+                env.call('set_video_path', video_filename)
+            else:
+                env.call('set_video_path', None)
             return
 
+        # 原有的单环境处理逻辑
         if isinstance(env.env, VideoRecordingWrapper):
             video_env = env.env
         else:
@@ -114,7 +119,7 @@ class Logger:
             video_env.file_path = str(video_filename)
         else:
             video_env.file_path = None
-            
+
     def log(self, d, category):
         assert category in ['train', 'inference']
         assert 'step' in d
