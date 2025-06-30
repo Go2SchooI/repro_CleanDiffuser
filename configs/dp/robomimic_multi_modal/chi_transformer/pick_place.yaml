@@ -55,22 +55,22 @@ use_seq: true
 # train
 device: cuda:0
 seed: 0
-num_workers: 12
-gradient_steps: 300000
-batch_size: 128
+num_workers: 0
+gradient_steps: 200000
+batch_size: 512
 horizon: 10
 nn: chi_transformer
 diffusion: ddpm
 sample_steps: 50
 temperature: 1.0
 # optimizer
-lr: 0.000141
+lr: 0.0002
 # eval
 model_path: path/to/model
 num_envs: 10
 eval_episodes: 60
 save_video: true # true
-eval_freq: 30000
+eval_freq: 25000
 # log
 exp_name: ${now:%Y.%m.%d-%H.%M}_${dataset_name}_${env_name}_${nn}_${diffusion}
 save_path: logs # logs # train_tests
@@ -78,7 +78,7 @@ project: CleanDiffuser
 group: dp_robomimic
 wandb_mode: offline
 log_freq: 2000
-save_freq: 30000
+save_freq: 25000
 work_dir: ${save_path}/${pipeline_name}/${mode}/${env_name}/${exp_name}_${now:%Y%m%d_%H%M%S}/${seed}
 # resume
 resume: false # true

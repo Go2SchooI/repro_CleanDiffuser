@@ -14,6 +14,16 @@ for logger_name in ['robosuite', 'robosuite_logs', 'robomimic']:
     logger.handlers.clear()
     logger.propagate = False
 
+class NullDevice:
+    def write(self, s): pass
+    def flush(self): pass
+
+# 保存原始stderr，稍后可以恢复
+original_stderr = sys.stderr
+
+# 在需要时临时屏蔽stderr
+sys.stderr = NullDevice()
+
 import hydra
 import gym
 import dill
@@ -224,8 +234,8 @@ def pipeline(args):
         num_workers=args.num_workers,
         shuffle=True,
         pin_memory=True,
-        persistent_workers=True,
-        prefetch_factor=4
+        persistent_workers=False, #True,
+        prefetch_factor=None #2
     )
     
     # --------------- Create Diffusion Model -----------------
