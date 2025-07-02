@@ -6,6 +6,7 @@ import pathlib
 import h5py
 import zarr
 from tqdm import tqdm
+import sys
 import concurrent.futures
 from collections import defaultdict
 from cleandiffuser.dataset.imagecodecs import register_codecs, Jpeg2k
@@ -204,12 +205,17 @@ class RobomimicImageDataset(BaseDataset):
 
         self.normalizer = self.get_normalizer()
 
-        # === 新增：预处理所有数据 ===
-        print("pre load data...")
+        print("preload data...")
         self._preprocessed_data = {}
-        for idx in range(len(self.sampler)):
+        for idx in tqdm(
+            range(len(self.sampler)),
+            desc="Preprocessing",
+            file=sys.stdout, # stder被拦截了，用stdout输出
+            ncols=80,
+            leave=True
+        ):
             self._preprocessed_data[idx] = self._process_sample(idx)
-        print(f"预处理完成，共{len(self._preprocessed_data)}samples")
+        print(f"preload data finished, totally {len(self._preprocessed_data)} samples")
 
     def get_normalizer(self):
         normalizer = defaultdict(dict)
@@ -277,7 +283,7 @@ class RobomimicImageDataset(BaseDataset):
     #     T_slice = slice(self.n_obs_steps)
 
     #     obs_dict = dict()
-    #     for key in self.rgb_keys:
+    #     for key in self.rgb_keys: # 图像 做 numpy -> float32 → normalize
     #         # move channel last to channel first
     #         # T,H,W,C
     #         # convert uint8 image to float32
@@ -301,6 +307,7 @@ class RobomimicImageDataset(BaseDataset):
     #         'action': torch.tensor(action)
     #     }
     #     return torch_data
+
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         # === 修改：直接返回预处理好的数据 ===
         return self._preprocessed_data[idx]

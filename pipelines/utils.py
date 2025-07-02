@@ -58,10 +58,10 @@ class Logger:
         self._video_dir = make_dir(self._log_dir / 'videos')
         self._cfg = cfg
 
-        swanlab.sync_wandb(
-            mode="cloud",
-            wandb_run=False
-        )
+        # swanlab.sync_wandb(
+        #     mode="cloud",
+        #     wandb_run=False
+        # )
         wandb.init(
             config=OmegaConf.to_container(cfg),
             project=cfg.project,

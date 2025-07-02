@@ -45,6 +45,8 @@ from cleandiffuser.dataset.dataset_utils import loop_dataloader
 from cleandiffuser.dataset.in_memory_dataset import InMemoryH5Dataset
 from cleandiffuser.utils import report_parameters
     
+from torch.profiler import profile, record_function, ProfilerActivity
+import torch.profiler
 
 def make_async_envs(args):
     import robomimic.utils.file_utils as FileUtils
@@ -215,6 +217,8 @@ def inference(args, envs, dataset, agent, logger, n_gradient_step = ""):
 
 @hydra.main(config_path="../configs/dp/robomimic_multi_modal/chi_transformer", config_name="pick_place")
 def pipeline(args):
+    from torch.cuda.amp import autocast, GradScaler
+
     # ---------------- Create Logger ----------------
     set_seed(args.seed)
     logger = Logger(pathlib.Path(args.work_dir), args)
@@ -233,9 +237,9 @@ def pipeline(args):
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         shuffle=True,
-        pin_memory=True,
-        persistent_workers=False, #True,
-        prefetch_factor=None #2
+        pin_memory=True
+        # persistent_workers=True, #True,
+        # prefetch_factor=4 #2
     )
     
     # --------------- Create Diffusion Model -----------------
@@ -301,9 +305,30 @@ def pipeline(args):
     
     if args.mode == "train":
         # ----------------- Training ----------------------
+        scaler = GradScaler() 
         n_gradient_step = 0
         diffusion_loss_list = []
         
+        # 添加profiler配置 - 新增代码开始
+        prof = torch.profiler.profile(
+            activities=[
+                torch.profiler.ProfilerActivity.CPU,
+                torch.profiler.ProfilerActivity.CUDA,
+            ],
+            schedule=torch.profiler.schedule(
+                wait=1,      # 等待1个step
+                warmup=2,    # 预热2个step
+                active=3,    # 活跃profiling 3个step
+                repeat=2     # 重复2次
+            ),
+            on_trace_ready=torch.profiler.tensorboard_trace_handler('./profiler_logs'),
+            record_shapes=True,
+            profile_memory=True,
+            with_stack=True
+        )
+        prof.start()  # 开始profiling
+        # 新增代码结束
+
         # resume training
         if args.resume:
             lastest_ckpt_path = pathlib.Path(args.resume_path).joinpath('models', args.resume_tag);
@@ -315,19 +340,28 @@ def pipeline(args):
                 print(
                     f"Checkpoint {lastest_ckpt_path} not found, start from scratch")
 
+
         start_time = time.time()
         for batch in loop_dataloader(dataloader):
-            # get condition
-            nobs = batch['obs']
-            condition = {}
-            for k in nobs.keys():
-                condition[k] = nobs[k][:, :args.obs_steps, :].to(args.device)
-            naction = batch['action'].to(args.device)
+            with record_function("data_loading_and_preprocessing"):
+                # get condition
+                nobs = batch['obs']
+                condition = {}
+                for k in nobs.keys():
+                    condition[k] = nobs[k][:, :args.obs_steps, :].to(args.device)
+                naction = batch['action'].to(args.device)
 
-            # update diffusion
-            diffusion_loss = agent.update(naction, condition)['loss']
-            lr_scheduler.step()
+            with record_function("model_update"):
+                # update diffusion
+                diffusion_loss = agent.update(naction, condition)['loss']
+                
+            with record_function("scheduler_step"):
+                lr_scheduler.step()
+                
             diffusion_loss_list.append(diffusion_loss)
+            
+            # 告诉profiler一个step结束
+            prof.step()
 
             if n_gradient_step % args.log_freq == 0:
                 metrics = {
@@ -352,10 +386,62 @@ def pipeline(args):
                 agent.model_ema.train()
             
             n_gradient_step += 1
+            
+            # 添加这个条件来停止profiling（避免文件过大）
+            if n_gradient_step >= 15:  # 只profile前15步
+                prof.stop()
+                print("Profiling completed! Check ./profiler_logs for TensorBoard visualization")
+                print("Run: tensorboard --logdir=./profiler_logs")
+                # 打印简单统计
+                print("\nTop 10 most time-consuming operations:")
+                print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
+                
             if n_gradient_step > args.gradient_steps:
                 # finish
                 logger.finish(agent)
                 break
+
+        # start_time = time.time()
+        # for batch in loop_dataloader(dataloader):
+        #     # get condition
+        #     nobs = batch['obs']
+        #     condition = {}
+        #     for k in nobs.keys():
+        #         condition[k] = nobs[k][:, :args.obs_steps, :].to(args.device)
+        #     naction = batch['action'].to(args.device)
+
+        #     # update diffusion
+        #     diffusion_loss = agent.update(naction, condition)['loss']
+        #     lr_scheduler.step()
+        #     diffusion_loss_list.append(diffusion_loss)
+
+        #     if n_gradient_step % args.log_freq == 0:
+        #         metrics = {
+        #             'step': n_gradient_step,
+        #             'total_time': time.time() - start_time,
+        #             'avg_diffusion_loss': np.mean(diffusion_loss_list)
+        #         }
+        #         logger.log(metrics, category='train')
+        #         diffusion_loss_list = []
+            
+        #     if n_gradient_step % args.save_freq == 0:
+        #         logger.save_agent(agent=agent, identifier=n_gradient_step)
+                
+        #     if n_gradient_step % args.eval_freq == 0 and (n_gradient_step > 0 or args.resume):
+        #         print("Evaluate model...")
+        #         agent.model.eval()
+        #         agent.model_ema.eval()
+        #         metrics = {'step': n_gradient_step}
+        #         metrics.update(inference(args, envs, dataset, agent, logger, n_gradient_step))
+        #         logger.log(metrics, category='inference')
+        #         agent.model.train()
+        #         agent.model_ema.train()
+            
+        #     n_gradient_step += 1
+        #     if n_gradient_step > args.gradient_steps:
+        #         # finish
+        #         logger.finish(agent)
+        #         break
     elif args.mode == "inference":
         # ----------------- Inference ----------------------
         if args.model_path:
@@ -377,12 +463,4 @@ if __name__ == "__main__":
     pipeline()
 
 
-
-
-
-
-
-
-
-    
 
