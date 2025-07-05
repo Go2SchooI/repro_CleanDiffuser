@@ -39,8 +39,8 @@ shape_meta:
       - 2
       type: low_dim
 action_dim: 7
-obs_steps: 2
-action_steps: 8
+obs_steps: 2 # （观察步数）是指模型在每一次决策时“看到”了多少个历史时刻的观测
+action_steps: 8 # （动作步数）是模型一次性预测多少步的动作序列（即一次性输出一段动作轨迹）
 
 # obs_encoder
 rgb_model: resnet18
@@ -55,7 +55,7 @@ use_seq: true
 # train
 device: cuda:0
 seed: 0
-num_workers: 0
+num_workers: 16
 gradient_steps: 200000
 batch_size: 128
 horizon: 10
@@ -67,13 +67,13 @@ temperature: 1.0
 lr: 0.0002
 # eval
 model_path: path/to/model
-num_envs: 10
-eval_episodes: 60
-save_video: true # true
+num_envs: 10 # 代表同时并行的环境数量
+eval_episodes: 60 # 在评估阶段你希望总共跑多少个完整的 episode（回合）用于评估模型性能
+save_video: true
 eval_freq: 25000
 # log
 exp_name: ${now:%Y.%m.%d-%H.%M}_${dataset_name}_${env_name}_${nn}_${diffusion}
-save_path: logs # logs # train_tests
+save_path: logs # train_tests
 project: CleanDiffuser
 group: dp_robomimic
 wandb_mode: offline

@@ -21,8 +21,8 @@ class NullDevice:
 # 保存原始stderr，稍后可以恢复
 original_stderr = sys.stderr
 
-# 在需要时临时屏蔽stderr
-sys.stderr = NullDevice()
+# # 在需要时临时屏蔽stderr
+# sys.stderr = NullDevice()
 
 import hydra
 import gym
@@ -167,9 +167,11 @@ def inference(args, envs, dataset, agent, logger, n_gradient_step = ""):
         solver = "ode_dpmpp_2"
     elif args.diffusion == "edm":
         solver = "euler"
-        
+    
+    # 表示需要多少个“评估批”（evaluation batches），每批使用 num_envs 个并行环境来跑 episode
+    # 每批循环中，会启动 num_envs 个环境并行采样，直到这些环境各自完成一个 episode，然后统计完后继续下一批。
     for i in range(args.eval_episodes // args.num_envs): 
-        ep_reward = [0.0] * args.num_envs
+        ep_reward = [0.0] * args.num_envs  # 初始化一个列表，ep_reward[i] 用来存放第 i 个环境的累积 reward，从 0 开始。
         obs, t = envs.reset(), 0
 
         # initialize video stream
@@ -202,23 +204,25 @@ def inference(args, envs, dataset, agent, logger, n_gradient_step = ""):
             
             if args.abs_action:
                 action = dataset.undo_transform_action(action)
-            obs, reward, done, info = envs.step(action)
-            ep_reward += reward
+            obs, reward, done, info = envs.step(action)  # 并行环境每个 step() 会返回长度为 n_envs 的 rewards 数组
+            ep_reward += reward  # 在一轮 episode 中，注意ep_reward和reward都是数组
             t += args.action_steps
         
         success = [1.0 if s > 0 else 0.0 for s in ep_reward]
+        # np.around(..., 2) 会将列表中的每个元素保留两位小数，success 列表与 ep_reward 同样长度的二值成功标志（1.0 或 0.0）
         print(f"[Episode {1+i*(args.num_envs)}-{(i+1)*(args.num_envs)}] reward: {np.around(ep_reward, 2)} success:{success}")
+        # 将这一批的 ep_reward（一个列表）作为一条数据添加到 episode_rewards 中
         episode_rewards.append(ep_reward)
         episode_steps.append(t)
         episode_success.append(success)
+    
+    # np.nanmean(episode_rewards) 会将上述二维数组 “flatten”（所有 episode，一并计算）后取平均；它帮助你得到整个评估过程中所有 episode 的平均奖励。
     print(f"Mean step: {np.nanmean(episode_steps)} Mean reward: {np.nanmean(episode_rewards)} Mean success: {np.nanmean(episode_success)}")
     return {'mean_step': np.nanmean(episode_steps), 'mean_reward': np.nanmean(episode_rewards), 'mean_success': np.nanmean(episode_success)}
 
 
 @hydra.main(config_path="../configs/dp/robomimic_multi_modal/chi_transformer", config_name="pick_place")
 def pipeline(args):
-    from torch.cuda.amp import autocast, GradScaler
-
     # ---------------- Create Logger ----------------
     set_seed(args.seed)
     logger = Logger(pathlib.Path(args.work_dir), args)
@@ -232,14 +236,15 @@ def pipeline(args):
                                     n_obs_steps=args.obs_steps, pad_before=args.obs_steps-1,
                                     pad_after=args.action_steps-1, abs_action=args.abs_action)
     print(dataset)
+    # 这是 PyTorch 标准的 DataLoader 对象，用于从 dataset 中按批读取样本
     dataloader = torch.utils.data.DataLoader(
         dataset,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         shuffle=True,
-        pin_memory=True
-        # persistent_workers=True, #True,
-        # prefetch_factor=4 #2
+        pin_memory=True,
+        persistent_workers=True, #True,
+        prefetch_factor=2 #2
     )
     
     # --------------- Create Diffusion Model -----------------
@@ -305,63 +310,25 @@ def pipeline(args):
     
     if args.mode == "train":
         # ----------------- Training ----------------------
-        scaler = GradScaler() 
         n_gradient_step = 0
         diffusion_loss_list = []
         
-        # 添加profiler配置 - 新增代码开始
-        prof = torch.profiler.profile(
-            activities=[
-                torch.profiler.ProfilerActivity.CPU,
-                torch.profiler.ProfilerActivity.CUDA,
-            ],
-            schedule=torch.profiler.schedule(
-                wait=1,      # 等待1个step
-                warmup=2,    # 预热2个step
-                active=3,    # 活跃profiling 3个step
-                repeat=2     # 重复2次
-            ),
-            on_trace_ready=torch.profiler.tensorboard_trace_handler('./profiler_logs'),
-            record_shapes=True,
-            profile_memory=True,
-            with_stack=True
-        )
-        prof.start()  # 开始profiling
-        # 新增代码结束
-
-        # resume training
-        if args.resume:
-            lastest_ckpt_path = pathlib.Path(args.resume_path).joinpath('models', args.resume_tag);
-            # assert lastest_ckpt_path.is_file(), f"Checkpoint path {lastest_ckpt_path} is not a file"
-            if lastest_ckpt_path.is_file():
-                print(f"from checkpoint {lastest_ckpt_path}")
-                agent.load(lastest_ckpt_path)
-            else:
-                print(
-                    f"Checkpoint {lastest_ckpt_path} not found, start from scratch")
-
-
         start_time = time.time()
-        for batch in loop_dataloader(dataloader):
-            with record_function("data_loading_and_preprocessing"):
-                # get condition
-                nobs = batch['obs']
-                condition = {}
-                for k in nobs.keys():
-                    condition[k] = nobs[k][:, :args.obs_steps, :].to(args.device)
-                naction = batch['action'].to(args.device)
+         # 将一个 有限次迭代的 dataloader 封装成一个 无限流，输出不止一个epoch，即遍历不止一遍 dataset 
+        for batch in loop_dataloader(dataloader): 
+            # get condition
+            nobs = batch['obs']
+            condition = {}
+            for k in nobs.keys():
+                # batch['obs']：通常是一个字典，可能包括图像帧、关节状态、末端位姿等。其维度一般为 (batch_size, seq_len, obs_dim)
+                condition[k] = nobs[k][:, :args.obs_steps, :].to(args.device)
+            # batch['action']：对应每个观察序列的动作目标，形状为 (batch_size, action_steps, action_dim)
+            naction = batch['action'].to(args.device)
 
-            with record_function("model_update"):
-                # update diffusion
-                diffusion_loss = agent.update(naction, condition)['loss']
-                
-            with record_function("scheduler_step"):
-                lr_scheduler.step()
-                
+            # update diffusion
+            diffusion_loss = agent.update(naction, condition)['loss']  # 损失通常是噪声预测的 MSE loss
+            lr_scheduler.step()
             diffusion_loss_list.append(diffusion_loss)
-            
-            # 告诉profiler一个step结束
-            prof.step()
 
             if n_gradient_step % args.log_freq == 0:
                 metrics = {
@@ -386,62 +353,10 @@ def pipeline(args):
                 agent.model_ema.train()
             
             n_gradient_step += 1
-            
-            # 添加这个条件来停止profiling（避免文件过大）
-            if n_gradient_step >= 15:  # 只profile前15步
-                prof.stop()
-                print("Profiling completed! Check ./profiler_logs for TensorBoard visualization")
-                print("Run: tensorboard --logdir=./profiler_logs")
-                # 打印简单统计
-                print("\nTop 10 most time-consuming operations:")
-                print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
-                
             if n_gradient_step > args.gradient_steps:
                 # finish
                 logger.finish(agent)
                 break
-
-        # start_time = time.time()
-        # for batch in loop_dataloader(dataloader):
-        #     # get condition
-        #     nobs = batch['obs']
-        #     condition = {}
-        #     for k in nobs.keys():
-        #         condition[k] = nobs[k][:, :args.obs_steps, :].to(args.device)
-        #     naction = batch['action'].to(args.device)
-
-        #     # update diffusion
-        #     diffusion_loss = agent.update(naction, condition)['loss']
-        #     lr_scheduler.step()
-        #     diffusion_loss_list.append(diffusion_loss)
-
-        #     if n_gradient_step % args.log_freq == 0:
-        #         metrics = {
-        #             'step': n_gradient_step,
-        #             'total_time': time.time() - start_time,
-        #             'avg_diffusion_loss': np.mean(diffusion_loss_list)
-        #         }
-        #         logger.log(metrics, category='train')
-        #         diffusion_loss_list = []
-            
-        #     if n_gradient_step % args.save_freq == 0:
-        #         logger.save_agent(agent=agent, identifier=n_gradient_step)
-                
-        #     if n_gradient_step % args.eval_freq == 0 and (n_gradient_step > 0 or args.resume):
-        #         print("Evaluate model...")
-        #         agent.model.eval()
-        #         agent.model_ema.eval()
-        #         metrics = {'step': n_gradient_step}
-        #         metrics.update(inference(args, envs, dataset, agent, logger, n_gradient_step))
-        #         logger.log(metrics, category='inference')
-        #         agent.model.train()
-        #         agent.model_ema.train()
-            
-        #     n_gradient_step += 1
-        #     if n_gradient_step > args.gradient_steps:
-        #         # finish
-        #         logger.finish(agent)
-        #         break
     elif args.mode == "inference":
         # ----------------- Inference ----------------------
         if args.model_path:

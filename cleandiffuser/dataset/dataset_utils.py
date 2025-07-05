@@ -342,7 +342,7 @@ class MinMaxNormalizer:
 
     def __init__(self, X):
         X = X.reshape(-1, X.shape[-1]).astype(np.float32)
-        self.min, self.max = np.min(X, axis=0), np.max(X, axis=0)
+        self.min, self.max = np.min(X, axis=0), np.max(X, axis=0)  # 表示某个feature的最小值和最大值，是多个feature这些值组成的向量
         self.range = self.max - self.min
         if np.any(self.range == 0):
             self.range = self.max - self.min
@@ -399,9 +399,10 @@ def dict_apply(
 
 
 def loop_dataloader(dl):
+    # 当 dataloader 完成一次遍历（即一个 epoch 后）回到 while True 顶部重新开始。
     while True:
-        for b in dl:
-            yield b
+        for b in dl:  # 在内部 for b in dl: —— 一次完整遍历 dataloader
+            yield b  # yield b 将每个批 b 输出
 
 def loop_two_dataloaders(dl1, dl2):
     while True:

@@ -205,17 +205,17 @@ class RobomimicImageDataset(BaseDataset):
 
         self.normalizer = self.get_normalizer()
 
-        print("preload data...")
-        self._preprocessed_data = {}
-        for idx in tqdm(
-            range(len(self.sampler)),
-            desc="Preprocessing",
-            file=sys.stdout, # stder被拦截了，用stdout输出
-            ncols=80,
-            leave=True
-        ):
-            self._preprocessed_data[idx] = self._process_sample(idx)
-        print(f"preload data finished, totally {len(self._preprocessed_data)} samples")
+        # print("preload data...")
+        # self._preprocessed_data = {}
+        # for idx in tqdm(
+        #     range(len(self.sampler)),
+        #     desc="Preprocessing",
+        #     file=sys.stdout, # stder被拦截了，用stdout输出
+        #     ncols=80,
+        #     leave=True
+        # ):
+        #     self._preprocessed_data[idx] = self._process_sample(idx)
+        # print(f"preload data finished, totally {len(self._preprocessed_data)} samples")
 
     def get_normalizer(self):
         normalizer = defaultdict(dict)
@@ -229,50 +229,8 @@ class RobomimicImageDataset(BaseDataset):
 
         return normalizer
 
-    def _process_sample(self, idx: int) -> Dict[str, torch.Tensor]:
-        """处理单个样本原来__getitem__的逻辑"""
-        sample = self.sampler.sample_sequence(idx)
-
-        # obs
-        # to save RAM, only return first n_obs_steps of OBS
-        # since the rest will be discarded anyway.
-        # when self.n_obs_steps is None
-        # this slice does nothing (takes all)
-        T_slice = slice(self.n_obs_steps)
-
-        obs_dict = dict()
-        for key in self.rgb_keys:
-            # move channel last to channel first
-            # T,H,W,C
-            # convert uint8 image to float32
-            obs_dict[key] = np.moveaxis(sample[key][T_slice], -1, 1
-                                        ).astype(np.float32) / 255.
-            # T,C,H,W
-            del sample[key]
-            obs_dict[key] = self.normalizer['obs'][key].normalize(obs_dict[key])
-
-        for key in self.lowdim_keys:
-            obs_dict[key] = sample[key][T_slice].astype(np.float32)
-            del sample[key]
-            obs_dict[key] = self.normalizer['obs'][key].normalize(obs_dict[key])
-
-        # action
-        action = sample['action'].astype(np.float32)
-        action = self.normalizer['action'].normalize(action)
-
-        torch_data = {
-            'obs': dict_apply(obs_dict, torch.tensor),
-            'action': torch.tensor(action)
-        }
-        return torch_data
-
-    def __str__(self) -> str:
-        return f"Keys: {self.replay_buffer.keys()} Steps: {self.replay_buffer.n_steps} Episodes: {self.replay_buffer.n_episodes}"
-
-    def __len__(self) -> int:
-        return len(self.sampler)
-
-    # def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
+    # def _process_sample(self, idx: int) -> Dict[str, torch.Tensor]:
+    #     """处理单个样本原来__getitem__的逻辑"""
     #     sample = self.sampler.sample_sequence(idx)
 
     #     # obs
@@ -283,7 +241,7 @@ class RobomimicImageDataset(BaseDataset):
     #     T_slice = slice(self.n_obs_steps)
 
     #     obs_dict = dict()
-    #     for key in self.rgb_keys: # 图像 做 numpy -> float32 → normalize
+    #     for key in self.rgb_keys:
     #         # move channel last to channel first
     #         # T,H,W,C
     #         # convert uint8 image to float32
@@ -308,9 +266,51 @@ class RobomimicImageDataset(BaseDataset):
     #     }
     #     return torch_data
 
+    def __str__(self) -> str:
+        return f"Keys: {self.replay_buffer.keys()} Steps: {self.replay_buffer.n_steps} Episodes: {self.replay_buffer.n_episodes}"
+
+    def __len__(self) -> int:
+        return len(self.sampler)
+
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
-        # === 修改：直接返回预处理好的数据 ===
-        return self._preprocessed_data[idx]
+        sample = self.sampler.sample_sequence(idx)  # 根据 idx 从数据源抽取一个 sequence（包括观测 obs 和动作 action）
+
+        # obs
+        # to save RAM, only return first n_obs_steps of OBS
+        # since the rest will be discarded anyway.
+        # when self.n_obs_steps is None
+        # this slice does nothing (takes all)
+        T_slice = slice(self.n_obs_steps)  # 切片到前 n_obs_steps 步
+
+        obs_dict = dict()
+        for key in self.rgb_keys: # 图像 做 numpy -> float32 → normalize
+            # move channel last to channel first
+            # T,H,W,C
+            # convert uint8 image to float32
+            obs_dict[key] = np.moveaxis(sample[key][T_slice], -1, 1
+                                        ).astype(np.float32) / 255.  # 截取前n_obs_steps步，交换维度，由uint8变为float32，线性映射
+            # T,C,H,W
+            del sample[key]
+            obs_dict[key] = self.normalizer['obs'][key].normalize(obs_dict[key])
+
+        for key in self.lowdim_keys:
+            obs_dict[key] = sample[key][T_slice].astype(np.float32)
+            del sample[key]
+            obs_dict[key] = self.normalizer['obs'][key].normalize(obs_dict[key])
+
+        # action
+        action = sample['action'].astype(np.float32)
+        action = self.normalizer['action'].normalize(action)
+
+        torch_data = {
+            'obs': dict_apply(obs_dict, torch.tensor),
+            'action': torch.tensor(action)
+        }
+        return torch_data
+
+    # def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
+    #     # === 修改：直接返回预处理好的数据 ===
+    #     return self._preprocessed_data[idx]
 
     def undo_transform_action(self, action):
         raw_shape = action.shape

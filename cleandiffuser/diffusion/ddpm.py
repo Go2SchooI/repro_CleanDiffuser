@@ -79,7 +79,7 @@ class DDPM(DiffusionModel):
 
     def add_noise(self, x0, t=None, eps=None):
         t = torch.randint(self.diffusion_steps, (x0.shape[0],), device=self.device) if t is None else t
-        eps = torch.randn_like(x0) if eps is None else eps
+        eps = torch.randn_like(x0) if eps is None else eps  # 生成标准正态噪声 eps：与 x0 形状相同。
         bar_alpha = at_least_ndim(self.bar_alpha[t], x0.dim())
         xt = x0 * bar_alpha.sqrt() + eps * (1 - bar_alpha).sqrt()
         xt = xt * (1. - self.fix_mask) + x0 * self.fix_mask
@@ -105,6 +105,35 @@ class DDPM(DiffusionModel):
         if update_ema: self.ema_update()
         log = {"loss": loss.item(), "grad_norm": grad_norm}
         return log
+    # def update(self, x0, condition=None, update_ema=True, **kwargs):
+    #     from torch.cuda.amp import autocast, GradScaler
+    
+    #     # 初始化scaler（只在第一次调用时）
+    #     if not hasattr(self, 'scaler'):
+    #         self.scaler = GradScaler()
+  
+    #     # 使用autocast包装forward pass
+    #     with autocast():
+    #         loss = self.loss(x0, condition)
+        
+    #     # 使用scaler处理backward
+    #     self.scaler.scale(loss).backward()
+        
+    #     # 梯度裁剪（需要unscale）
+    #     if self.grad_clip_norm:
+    #         self.scaler.unscale_(self.optimizer)
+    #         grad_norm = nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip_norm)
+    #     else:
+    #         grad_norm = None
+        
+    #     # 使用scaler更新
+    #     self.scaler.step(self.optimizer)
+    #     self.scaler.update()
+    #     self.optimizer.zero_grad()
+        
+    #     if update_ema: self.ema_update()
+    #     log = {"loss": loss.item(), "grad_norm": grad_norm}
+    #     return log
 
     def update_classifier(self, x0, condition):
         xt, t, eps = self.add_noise(x0)
