@@ -8,6 +8,7 @@ import swanlab
 import wandb.sdk.data_types.video as wv
 import numpy as np
 import torch
+import dill
 from omegaconf import OmegaConf
 
 from cleandiffuser.env.wrapper import VideoRecordingWrapper
@@ -58,10 +59,10 @@ class Logger:
         self._video_dir = make_dir(self._log_dir / 'videos')
         self._cfg = cfg
 
-        swanlab.sync_wandb(
-            mode="cloud",
-            wandb_run=False
-        )
+        # swanlab.sync_wandb(
+        #     mode="cloud",
+        #     wandb_run=False
+        # )
         wandb.init(
             config=OmegaConf.to_container(cfg),
             project=cfg.project,
@@ -96,7 +97,7 @@ class Logger:
                     video_filename = os.path.join(self._video_dir, f"{video_id}_{generate_id}.mp4")
                 elif mode == "inference":
                     video_filename = os.path.join(self._video_dir, f"{video_id}_{wv.util.generate_id()}.mp4")
-                
+
                 # 关键：调用每个子环境的 set_video_path 方法
                 # 这里 'set_video_path' 是方法名字符串，可以被序列化
                 env.call('set_video_path', video_filename)
@@ -105,6 +106,7 @@ class Logger:
             return
 
         # 原有的单环境处理逻辑
+
         if isinstance(env.env, VideoRecordingWrapper):
             video_env = env.env
         else:

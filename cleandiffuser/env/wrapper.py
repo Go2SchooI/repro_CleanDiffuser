@@ -1,4 +1,5 @@
 import gym
+import cv2
 from gym import spaces
 import numpy as np
 from collections import defaultdict, deque
@@ -215,6 +216,7 @@ class VideoRecordingWrapper(gym.Wrapper):
             mode='rgb_array',
             file_path=None,
             steps_per_render=1,
+            video_resolution=None,
             **kwargs
         ):
         """
@@ -227,6 +229,7 @@ class VideoRecordingWrapper(gym.Wrapper):
         self.steps_per_render = steps_per_render
         self.file_path = file_path
         self.video_recoder = video_recoder
+        self.video_resolution = video_resolution
 
         self.step_count = 0
 
@@ -248,6 +251,12 @@ class VideoRecordingWrapper(gym.Wrapper):
             frame = self.env.render(
                 mode=self.mode, **self.render_kwargs)
             assert frame.dtype == np.uint8
+
+            # 如果设置了视频分辨率，缩放frame
+            if self.video_resolution:
+                frame = cv2.resize(frame, self.video_resolution, interpolation=cv2.INTER_LANCZOS4)
+                frame = frame.astype(np.uint8)
+
             self.video_recoder.write_frame(frame)
         return result
     
@@ -256,6 +265,15 @@ class VideoRecordingWrapper(gym.Wrapper):
             self.video_recoder.stop()
         return self.file_path
 
+    def set_video_resolution(self, resolution):
+        """设置视频分辨率"""
+        self.video_resolution = resolution
+
+        if self.video_recoder.is_ready():
+            self.video_recoder.stop()
+        return True
+
+    
     def set_video_path(self, file_path):
         """设置视频文件路径"""
         self.file_path = file_path

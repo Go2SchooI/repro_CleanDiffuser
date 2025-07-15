@@ -98,12 +98,13 @@ def make_async_envs(args):
                     fps=10,
                     codec='h264',
                     input_pix_fmt='rgb24',
-                    crf=22,
+                    crf=18,
                     thread_type='FRAME',
                     thread_count=1
                 ),
                 file_path=None,
-                steps_per_render=2
+                steps_per_render=2,
+                video_resolution=None
             ),
             n_obs_steps=args.obs_steps,
             n_action_steps=args.action_steps,
@@ -133,7 +134,7 @@ def make_async_envs(args):
                     fps=10,
                     codec='h264',
                     input_pix_fmt='rgb24',
-                    crf=22,
+                    crf=18,
                     thread_type='FRAME',
                     thread_count=1
                 ),
@@ -176,8 +177,12 @@ def inference(args, envs, dataset, agent, logger, n_gradient_step = ""):
 
         # initialize video stream
         if args.save_video:
+            if args.high_res_video:
+                envs.call('set_video_resolution', (128, 128))
+            
             logger.video_init_async(envs, enable=True, mode=args.mode, video_id=str(i),
-                generate_id=(str(n_gradient_step) if args.mode=="train" else ""))
+                generate_id=str(n_gradient_step) if args.mode=="train" else ""
+            )
         
         while t < args.max_episode_steps:
             obs_dict = {}

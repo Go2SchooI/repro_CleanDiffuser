@@ -3,7 +3,7 @@ pipeline_name: dp_robomimic_multi_modal
 env_name: pick_place
 env_type: ph
 abs_action: false
-dataset_name: m115_image
+dataset_name: 43r_image
 dataset_path: dev/robomimic/datasets/${env_name}/${dataset_name}.hdf5
 mode: train
 max_episode_steps: 500
@@ -70,6 +70,7 @@ model_path: path/to/model
 num_envs: 10 # 代表同时并行的环境数量
 eval_episodes: 60 # 在评估阶段你希望总共跑多少个完整的 episode（回合）用于评估模型性能
 save_video: true
+high_res_video: true # 是否保存高分辨率视频
 eval_freq: 25000
 # log
 exp_name: ${now:%Y.%m.%d-%H.%M}_${dataset_name}_${env_name}_${nn}_${diffusion}
